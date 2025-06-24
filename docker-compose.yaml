@@ -1,0 +1,60 @@
+services:
+  webdriver-container:
+    container_name: genlayer-node-webdriver
+    image: yeagerai/genlayer-genvm-webdriver:0.0.2
+    shm_size: 2gb
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: 4444
+    ports:
+      - "${WEBDRIVER_PORT:-4444}:4444"
+    restart: unless-stopped
+
+
+  genlayer:
+    container_name: genlayer
+    image: ubuntu:24.04
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./script/:/genlayer/script/
+      - ./.genlayer_data:/genlayer/genlayer-node-linux-amd64
+      - ./.env:/genlayer/.env:ro
+    entrypoint: /genlayer/script/run-genlayer.sh
+    depends_on:
+      - webdriver-container
+    working_dir: /genlayer
+    ports:
+      - "127.0.0.1:9153:9153"
+      - "127.0.0.1:9151:9151"
+
+  prometheus:
+    image: prom/prometheus
+    restart: unless-stopped
+    depends_on:
+      - webdriver-container
+    volumes:
+      - ./${PROM_CONFIG_FILE:-prometheus/prometheus.remote.yml}:/etc/prometheus/prometheus.yml
+
+  monitor:
+    build:
+      context: ./monitor
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - webdriver-container
+    environment: 
+      - VALIDATOR_ADDRESS=${VALIDATOR_ADDRESS}
+  
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - webdriver-container
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
